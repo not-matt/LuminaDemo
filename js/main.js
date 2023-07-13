@@ -12,10 +12,10 @@ const KEEP_PERCENTAGE = 0.15; // keep only 15% of audio file
 
 
 // REMOVE FOR PRODUCTION
-import { essentiaAnalysis } from './results/essentiaAnalysis.js';
-import { inferenceResults } from './results/inferenceResults.js';
-// let essentiaAnalysis;
-// let inferenceResults = [];
+// import { essentiaAnalysis } from './results/essentiaAnalysis.js';
+// import { inferenceResults } from './results/inferenceResults.js';
+let essentiaAnalysis;
+let inferenceResults = [];
 
 let essentia = null;
 let featureExtractionWorker = null;
@@ -157,7 +157,7 @@ function decodeFile(arrayBuffer) {
 
             if (essentia == null) { return; }
 
-            // essentiaAnalysis = await segment(essentia, prepocessedAudio, setProgress, setText);
+            essentiaAnalysis = await segment(essentia, prepocessedAudio, setProgress, setText);
 
             if (essentiaAnalysis == null) { return; }
 
@@ -170,7 +170,7 @@ function decodeFile(arrayBuffer) {
             createFeatureExtractionWorker();
             setProgress(50);
 
-            // inferenceResults = await processSegments(setProgress, setText, prepocessedAudio);
+            inferenceResults = await processSegments(setProgress, setText, prepocessedAudio);
             setProgress(100);
             setText('Analysis complete!');
             controls.toggleEnabled(true);
