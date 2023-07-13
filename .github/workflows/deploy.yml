@@ -1,9 +1,9 @@
-name: Deploy to GitHub Pages
+name: Build and Deploy
 
 on:
   push:
     branches:
-      - main
+      - main  # Change this if your main branch has a different name
 
 jobs:
   build:
@@ -13,13 +13,24 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v2
 
-      - name: Obfuscate JavaScript
+      - name: Uglify and bundle JavaScript
         run: |
-          npm install -g uglify-js  # Install UglifyJS if not already installed
-          uglifyjs js/*.js -o build/obfuscated.js
+          curl -o build/uglify.js https://github.com/mishoo/UglifyJS/raw/2.4.24/uglifyjs
+          chmod +x build/uglify.js
+          ./build/uglify.js js/*.js -o build/obfuscated.js
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git checkout -b bundle
+          git add build/obfuscated.js
+          git commit -m "Bundle and obfuscate JavaScript"
+          git push -u origin bundle
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           personal_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./build
+          publish_branch: bundle
+          publish_dir: ./
