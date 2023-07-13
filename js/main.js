@@ -339,12 +339,12 @@ async function processSegments(setProgress, setText, prepocessedAudio) {
 }
 
 function createFeatureExtractionWorker() {
-    featureExtractionWorker = new Worker('./src/featureExtraction.js');
+    featureExtractionWorker = new Worker('./js/featureExtraction.js');
 }
 
 function createInferenceWorkers() {
     modelNames.forEach((n) => {
-        inferenceWorkers[n] = new Worker('./src/inference.js');
+        inferenceWorkers[n] = new Worker('./js/inference.js');
         inferenceWorkers[n].postMessage({
             name: n
         });

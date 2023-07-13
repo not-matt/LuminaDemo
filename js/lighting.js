@@ -6,15 +6,25 @@ const FPS = 30;
 const animationScores = [
     [pulse, 1, null, null],
     [strobe, 1, null, null],
-]
+    [flicker, 1, null, null],
+];
 
 function pickAnimation(segmentInference) {
-    // pick a random animation function based on the scores
-    // then call the function with the audio data
+    // pick an animation function based on the scores
     // todo: this should be based on the inference results
-    const animation = animationScores[Math.floor(Math.random() * animationScores.length)];
-    return animation[0];
-    
+    const aggressive = segmentInference.find((result) => result.model === 'mood_aggressive').predictions;
+    const danceable = segmentInference.find((result) => result.model === 'danceability').predictions;
+    const relaxed = segmentInference.find((result) => result.model === 'mood_relaxed').predictions;
+    // if dancable or aggressive are higher than .6, choose randomly between strobe or flicker
+    if (danceable > .6 || aggressive > .6) {
+        return [strobe, burst][Math.floor(Math.random() * 2)];
+    }
+    // if relaxed is higher than .75, choose randomly between pulse or strobe
+    if (relaxed > .75) {
+        return [pulse, flicker][Math.floor(Math.random() * 2)];
+    }
+    // otherwise pick randomly
+    return [pulse, flicker, strobe, burst][Math.floor(Math.random() * 4)];
 }
 
 export function createLighting(analysis, inference) {
@@ -29,7 +39,7 @@ export function createLighting(analysis, inference) {
     for (let i = 0; i < inference.length; i++) {
         // get audio data within the segment to pass to the animation function
         endBeat = analysis.peaks[i]; // todo -  fix peaks to include the first and last beat 
-        segmentBeats = beats.slice(startBeat, endBeat);
+        segmentBeats = beats.slice(startBeat, endBeat + 1);
         // subtract the start beat from the segment beats to make the first beat 0
         segmentBeats = segmentBeats.map((beat) => beat - segmentBeats[0]);
         segmentInference = inference[i].inferenceResults;
@@ -60,7 +70,7 @@ function timeToFrame(time) {
 function pulse(segmentBeats, segmentInference) {
     const output = makeOutputArray(segmentBeats);
     const danceability = segmentInference.find((result) => result.model === 'danceability').predictions;
-    let startFrame = 0
+    let startFrame = 0;
     let endFrame = 0;
     let beat = 0;
     for (let i = 1; i < segmentBeats.length; i++) {
@@ -84,20 +94,47 @@ function pulse(segmentBeats, segmentInference) {
 // Description: Spotlights flash in sync with the beat, using the beat timing information. 
 function strobe(segmentBeats, segmentInference) {
     const output = makeOutputArray(segmentBeats);
-    let startFrame = 0
+    let startFrame = 0;
     let endFrame = 0;
     let beat = 0;
     for (let i = 1; i < segmentBeats.length; i++) {
         beat = segmentBeats[i];
         endFrame = timeToFrame(beat);
-        const strobeStart = 255
-        const strobeStep = -255 / (endFrame - startFrame)
+        const strobeStart = 255;
+        const strobeStep = -255 / (endFrame - startFrame);
         let strobeValue = strobeStart;
         for (let j = startFrame; j < endFrame; j++) {
             output[j].fill(strobeValue);
             strobeValue += strobeStep;
         }
         startFrame = endFrame;
+    }
+    return output;
+}
+
+function flicker(segmentBeats, segmentInference) {
+    const output = makeOutputArray(segmentBeats);
+    const relaxation = segmentInference.find((result) => result.model === 'mood_relaxed').predictions;
+    const flickerIntensity = 1 - relaxation;
+    let lastOutput = new Uint8Array(UNIVERSE_SIZE);
+    const beatFrames = segmentBeats.map((beat) => timeToFrame(beat));
+    for (let i = 0; i < output.length; i++) {
+        // multiply the last output by 0.9 to make it fade out
+        lastOutput = lastOutput.map((value) => value * 0.97);
+        // if it's a beat, make some twinkles on random lights
+        if (beatFrames.includes(i)) {
+            for (let j = 0; j < UNIVERSE_SIZE; j++) {
+                if (Math.random() < flickerIntensity) {
+                    output[i][j] = 255;
+                }
+                else {
+                    output[i][j] = lastOutput[j];
+                }
+            }
+        } else {
+            output[i] = lastOutput;
+        }
+        lastOutput = output[i];
     }
     return output;
 }
@@ -111,10 +148,10 @@ function flow(segmentBeats, segmentInference) {
     const danceability = segmentInference.find((result) => result.model === 'danceability').predictions;
     const aggression = segmentInference.find((result) => result.model === 'mood_aggressive').predictions;
     const relaxation = segmentInference.find((result) => result.model === 'mood_relaxed').predictions;
-    
+
     const speed = 4 * (1 - danceability); // Adjust the speed based on danceability (higher danceability = faster flow)
     const brightness = 255 * (1 - aggression) * relaxation; // Adjust the brightness based on aggression and relaxation
-    
+
     let currentPosition = 0;
     let currentFrame = 0;
     let beat = 0;
@@ -135,10 +172,36 @@ function flow(segmentBeats, segmentInference) {
             currentFrame = timeToFrame(currentPosition);
         }
     }
-
     return output;
 }
 
+function burst(segmentBeats, segmentInference) {
+    const output = makeOutputArray(segmentBeats);
+    const aggression = segmentInference.find((result) => result.model === 'mood_aggressive').predictions;
+    const relaxation = segmentInference.find((result) => result.model === 'mood_relaxed').predictions;
+    let lastOutput = new Array(UNIVERSE_SIZE / 2).fill(0);
+    const beatFrames = segmentBeats.map((beat) => timeToFrame(beat));
+    for (let i = 0; i < output.length; i++) {
+        // multiply the last output by 0.9 to make it fade out
+        lastOutput = lastOutput.map((value) => value * 0.98);
+        // roll the last output to the right by 5 lights
+        for (let j = 0; j < 5; j++) {
+            lastOutput.unshift(lastOutput.pop());
+            lastOutput[0] = lastOutput[1];
+        }
+        // if it's a beat, make some twinkles on random lights
+        if (beatFrames.includes(i)) {
+            lastOutput[0] = 255;
+        }
+        // mirror the last output onto left and right of the output universe 
+        const centre = UNIVERSE_SIZE / 2;
+        for (let j = 0; j < UNIVERSE_SIZE ; j++) {
+            output[i][centre - j - 1] = lastOutput[j];
+            output[i][centre + j] = lastOutput[j];
+        }
+    }
+    return output;
+}
 
 // Fade
 // CNN Matches: Low Danceable, Low Aggressive, High Relaxed
@@ -163,7 +226,3 @@ function flow(segmentBeats, segmentInference) {
 // Beat Sync
 // CNN Matches: High Danceable, Low Aggressive, High Relaxed
 // Description: Spotlights change brightness or intensity based on the beat positions, synchronized with the music. The danceability score influences the responsiveness and timing of the changes, with high danceability resulting in more pronounced variations. The aggression and relaxation scores can impact the color or overall visual style of the lighting changes.
-
-// Flicker
-// CNN Matches: Low Danceable, Low Aggressive, Low Relaxed
-// Description: The spotlights flicker randomly and irregularly, creating a subtle and atmospheric lighting effect. The flicker rate and intensity can be influenced by the audio energy or spectral information, resulting in variations based on the audio characteristics. This effect adds an element of unpredictability and ambiance to the lighting.

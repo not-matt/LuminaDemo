@@ -38,6 +38,9 @@ function toggleUploadDisplayHTML(mode) {
 
             const controls = document.querySelector('#playback-controls');
             controls.style.display = 'block';
+
+            const output = document.querySelector('#output-container');
+            output.style.display = 'flex';
             // fileSelectArea.appendChild(controlsTemplate.content.cloneNode(true));
 
 
