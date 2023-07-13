@@ -59,7 +59,7 @@ a#essentia-header-link:active {
 }
 
 #banner {
-    width: 50%;
+    width: 700px;
     margin: 0 auto;
 }
 
@@ -134,6 +134,17 @@ a#essentia-header-link:active {
 
 #results {
     display: none;
+}
+
+/* display the child divs in a row left to right */
+#output-container {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    gap: 30px;
+    align-items: center;
+    margin-top: 10px;
+    width: 100%;
 }
 
 /* #loader {

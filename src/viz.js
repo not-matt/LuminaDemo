@@ -36,9 +36,9 @@ function toggleUploadDisplayHTML(mode) {
                 fileDropArea.remove();
             }
 
-            const controlsTemplate = document.querySelector('#playback-controls');
-
-            fileSelectArea.appendChild(controlsTemplate.content.cloneNode(true));
+            const controls = document.querySelector('#playback-controls');
+            controls.style.display = 'block';
+            // fileSelectArea.appendChild(controlsTemplate.content.cloneNode(true));
 
 
         case 'upload':
@@ -53,11 +53,11 @@ function toggleUploadDisplayHTML(mode) {
 class PlaybackControls {
     constructor(wavesurferInstance) {
         this.controls = {
-            backward: document.querySelector('#file-select-area #backward'),
-            play: document.querySelector('#file-select-area #play'),
-            forward: document.querySelector('#file-select-area #forward'),
-            mute: document.querySelector('#file-select-area #mute'),
-            zoom: document.querySelector('#file-select-area #zoom-slider')
+            backward: document.querySelector('#playback-controls #backward'),
+            play: document.querySelector('#playback-controls #play'),
+            forward: document.querySelector('#playback-controls #forward'),
+            mute: document.querySelector('#playback-controls #mute'),
+            zoom: document.querySelector('#playback-controls #zoom-slider')
         };
 
         // set click handlers

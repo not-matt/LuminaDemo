@@ -103,7 +103,6 @@ function modelPredict(features) {
             console.info(`${modelName}: Inference took: ${Date.now() - inferenceStart}`);
             // output to main thread
             outputPredictions(results);
-            model.dispose();
         });
     }
 }
@@ -126,5 +125,10 @@ onmessage = function listenToMainThread(msg) {
         console.log("From inference worker: I've got features!");
         // should/can this eventhandler run async functions
         modelPredict(msg.data.features);
+    } else if (msg.data.dispose) {
+        console.log("From inference worker: I've been disposed!");
+        model.dispose();
+        tf.disposeVariables();
+        tf.dispose();
     }
 };

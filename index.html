@@ -16,6 +16,10 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/semantic-ui/2.4.1/semantic.min.js"
         integrity="sha512-dqw6X88iGgZlTsONxZK9ePmJEFrmHwpuMrsUChjAw1mRUhUITE5QU9pkcSox+ynfLhL15Sv2al5A0LVyDCmtUw=="
         crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/essentia.js@0.1.0/dist/essentia-wasm.web.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/essentia.js@0.1.0/dist/essentia.js-core.js"></script>
+    <script src="src/main.js" type="module" async defer></script>
+
 </head>
 
 <body>
@@ -30,6 +34,33 @@
             </div>
         </div>
 
+        <div id="playback-controls">
+            <div class="controls">
+                <button id="backward" class="ui button tiny">
+                    <i class="step backward icon"></i>
+                    Backward
+                </button>
+                <button id="play" class="ui primary button tiny">
+                    <i class="play icon"></i>
+                    Play/
+                    <i class="pause icon"></i>
+                    Pause
+                </button>
+                <button id="forward" class="ui button tiny">
+                    <i class="step forward icon"></i>
+                    Forward
+                </button>
+                <button id="mute" class="ui button tiny">
+                    <i class="volume off icon"></i>
+                    Toggle Mute
+                </button>
+                <div id="zoom" class="ui slider">
+                    <label for="zoom-slider">Zoom</label>
+                    <input type="range" min="10" max="200" value="100" class="slider" id="zoom-slider">
+                </div>
+            </div>
+        </div>
+
         <div id="waveform"></div>
         <div id="feature-matrix-container"></div>
 
@@ -41,40 +72,49 @@
         </div>
         <!-- <div id="loader-indeterminate"  class="ui indeterminate loader">Loading...</div> -->
 
-        <div id="results">
-            <div id="danceability" class="classifier">
-                <span class="result-icon">💃🏻</span>
-                <!-- <h2>Danceability</h2> -->
-                <div class="classifier-meter" data-classifier="Danceability"></div>
-            </div>
-            <div id="mood_happy" class="classifier">
-                <span class="result-icon">😁</span>
-                <!-- <h2>Happy</h2> -->
-                <div class="classifier-meter" data-classifier="Happy"></div>
-            </div>
-            <div id="mood_sad" class="classifier">
-                <span class="result-icon">😢</span>
-                <!-- <h2>Sad</h2> -->
-                <div class="classifier-meter" data-classifier="Sad"></div>
-            </div>
-            <div id="mood_relaxed" class="classifier">
-                <span class="result-icon">😌</span>
-                <!-- <h2>Relaxed</h2> -->
-                <div class="classifier-meter" data-classifier="Relaxed"></div>
-            </div>
-            <div id="mood_aggressive" class="classifier">
-                <span class="result-icon">👊</span>
-                <!-- <h2>Aggressiveness</h2> -->
-                <div class="classifier-meter" data-classifier="Aggressiveness"></div>
-            </div>
-            <div id="bpm-and-key">
-                <div id="bpm" class="row-container">
-                    <div class="tag">BPM</div>
-                    <div id="bpm-value"></div>
+        <div id="output-visualiser"></div>
+
+        <div id="output-container">
+            <div id="card" class="ui card">
+                <div id="card-header" class="content">
+                    Segment
+                    <div class="meta">
+                        start:end [duration s]
+                    </div>
                 </div>
-                <div id="key" class="row-container">
-                    <div class="tag">Key</div>
-                    <div id="key-value"></div>
+                <div class="extra content">
+                    <div id="progress_mood_happy" class="ui green progress">
+                        <div class="bar"></div>
+                        <div class="label">Happy</div>
+                    </div>
+                    <div id="progress_mood_sad" class="ui teal progress">
+                        <div class="bar"></div>
+                        <div class="label">Sad</div>
+                    </div>
+                    <div id="progress_mood_aggressive" class="ui red progress">
+                        <div class="bar"></div>
+                        <div class="label">Aggressive</div>
+                    </div>
+                    <div id="progress_mood_relaxed" class="ui violet progress">
+                        <div class="bar"></div>
+                        <div class="label">Relaxed</div>
+                    </div>
+                    <div id="progress_danceability" class="ui yellow progress">
+                        <div class="bar"></div>
+                        <div class="label">Danceable</div>
+                    </div>
+                </div>
+            </div>
+            <div class="ui card">
+                <div class="content">
+                    <div class="header">Websocket Output</div>
+                    <div class="ui input">
+                        <input id="ws-destination" type="text" placeholder="Server address eg. localhost:8080">
+                    </div>
+                    <button id="ws-connect" class="ui primary button">
+                        Connect
+                    </button>
+                    <div id="ws-status"></div>
                 </div>
             </div>
         </div>
@@ -92,35 +132,8 @@
         <script src="https://unpkg.com/wavesurfer.js@beta/dist/plugins/regions.js"></script> -->
     <!-- <script src="https://unpkg.com/wavesurfer.js"></script> -->
     <!-- <script src="https://unpkg.com/wavesurfer.js/dist/plugin/wavesurfer.regions.js"></script> -->
-    <script src="https://cdn.jsdelivr.net/npm/essentia.js@0.1.0/dist/essentia-wasm.web.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/essentia.js@0.1.0/dist/essentia.js-core.js"></script>
-    <script src="src/main.js" type="module" async defer></script>
 
-    <template id="playback-controls">
-        <div class="controls">
-            <button id="backward" class="ui button tiny">
-                <i class="step backward icon"></i>
-                Backward
-            </button>
-            <button id="play" class="ui primary button tiny">
-                <i class="play icon"></i>
-                Play/
-                <i class="pause icon"></i>
-                Pause
-            </button>
-            <button id="forward" class="ui button tiny">
-                <i class="step forward icon"></i>
-                Forward
-            </button>
-            <button id="mute" class="ui button tiny">
-                <i class="volume off icon"></i>
-                Toggle Mute
-            </button>
-            <div id="zoom" class="ui slider">
-                <input type="range" min="10" max="200" value="100" class="slider" id="zoom-slider">
-            </div>
-        </div>
-    </template>
+
 </body>
 
 </html>

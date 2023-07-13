@@ -4,17 +4,26 @@ import { preprocess, shortenAudio } from './audioUtils.js';
 import WaveSurfer from 'https://unpkg.com/wavesurfer.js@beta';
 import RegionsPlugin from 'https://unpkg.com/wavesurfer.js@beta/dist/plugins/regions.js';
 import { segment } from './segmentation.js';
+import { createLighting } from './lighting.js';
 
 const AudioContext = window.AudioContext || window.webkitAudioContext;
 const audioCtx = new AudioContext();
 const KEEP_PERCENTAGE = 0.15; // keep only 15% of audio file
 
+
+// REMOVE FOR PRODUCTION
+import { essentiaAnalysis } from './results/essentiaAnalysis.js';
+import { inferenceResults } from './results/inferenceResults.js';
+// let essentiaAnalysis;
+// let inferenceResults = [];
+
 let essentia = null;
-let essentiaAnalysis;
 let featureExtractionWorker = null;
-let inferenceWorkers = {};
+let lightingOutput = [];
 const modelNames = ['mood_happy', 'mood_sad', 'mood_relaxed', 'mood_aggressive', 'danceability'];
-let inferenceResultPromises = [];
+let inferenceWorkers = {};
+
+let socket = null;
 
 const resultsViz = new AnalysisResults(modelNames);
 let controls;
@@ -55,6 +64,51 @@ dropArea.addEventListener('drop', (e) => {
 dropArea.addEventListener('click', () => {
     dropInput.click();
 });
+
+const connectButton = document.getElementById('ws-connect');
+connectButton.addEventListener('click', () => {
+    if (socket) {
+        socket.close();
+        socket = null;
+        connectButton.innerHTML = 'Connect';
+    } else {
+        const destinationInput = document.getElementById("ws-destination");
+        const destination = destinationInput.value.trim();
+    
+        if (!destination) {
+            alert("Please enter a valid destination for the WebSocket connection (eg. localhost:8080)");
+            return;
+        }
+        
+        socket = new WebSocket(`ws://${destination}`);
+        socket.onopen = function() {
+            setStatus("Connected");
+            connectButton.innerHTML = 'Disconnect';
+        };
+    
+        socket.onclose = function() {
+            setStatus("Disconnected");
+            connectButton.innerHTML = 'Connect';
+        };
+
+        socket.onerror = function(error) {
+            console.error("WebSocket error:", error);
+            setStatus("Error");
+            connectButton.innerHTML = 'Connect';
+        };
+
+        socket.onmessage = function(event) {
+            console.log("WebSocket message:", event.data);
+        };
+
+    }
+});
+
+function setStatus(status) {
+    const statusElement = document.getElementById("ws-status");
+    statusElement.textContent = `Status: ${status}`;
+}
+
 
 function processFileUpload(files) {
     if (files.length > 1) {
@@ -103,87 +157,189 @@ function decodeFile(arrayBuffer) {
 
             if (essentia == null) { return; }
 
-            essentiaAnalysis = await segment(essentia, prepocessedAudio, setProgress, setText)
+            // essentiaAnalysis = await segment(essentia, prepocessedAudio, setProgress, setText);
 
             if (essentiaAnalysis == null) { return; }
 
             // show segmentation
             showSegmentation(essentiaAnalysis);
+            // showAdvancedSegmentation(essentiaAnalysis);
 
             setText('Extracting audio features...');
 
             createFeatureExtractionWorker();
             setProgress(50);
 
+            // inferenceResults = await processSegments(setProgress, setText, prepocessedAudio);
+            setProgress(100);
+            setText('Analysis complete!');
+            controls.toggleEnabled(true);
+            console.log('All segments processed');
+            console.log(inferenceResults);
+            // showInferenceResults(inferenceResults);
 
-            // for each segment, extract features
-            let endFrame;
-            let startFrame = 0;
-            let audioData;
-            let audioSegment;
-            for (let i = 0; i < essentiaAnalysis.peaks.length; i++) {
-                endFrame = essentiaAnalysis.peaks[i];
-                // get the audio between the start and end frames
-                audioSegment = prepocessedAudio.resample_16khz.slice(startFrame, endFrame);
-                audioData = shortenAudio(audioSegment, KEEP_PERCENTAGE, false);
-                // send for feature extraction
-                featureExtractionWorker.postMessage({
-                    audio: audioData.buffer
-                }, [audioData.buffer]);
-                audioData = null;
-                // wait for feature extraction to complete
-                await new Promise((res) => {
-                    featureExtractionWorker.onmessage = function listenToFeatureExtractionWorker(msg) {
-                        // feed to models
-                        if (msg.data.features) {
-                            modelNames.forEach((n) => {
-                                // send features off to each of the models
-                                inferenceWorkers[n].postMessage({
-                                    features: msg.data.features
-                                });
-                            });
-                            msg.data.features = null;
-                        }
-                        // free worker resource until next audio is uploaded
-                        featureExtractionWorker.terminate();
-                        res();
-                    };
+            // clean up
+            for (let i = 0; i < modelNames.length; i++) {
+                inferenceWorkers[modelNames[i]].postMessage({ "dispose": true });
+                inferenceWorkers[modelNames[i]].terminate();
+            }
+            featureExtractionWorker.terminate();
+
+            // downloadResults(essentiaAnalysis);
+            // downloadResults(inferenceResults);
+
+            lightingOutput = createLighting(essentiaAnalysis, inferenceResults);
+            createVisualiser();
+
+            let previousFrameNumber = -1;
+            wavesurfer.on('audioprocess', (time) => {
+                // Calculate the current frame number based on the playback time
+                const frameNumber = Math.floor(time * 30); // Assuming 30fps
+                if (frameNumber !== previousFrameNumber) {
+                    // Trigger your animation frame only if it's a new frame
+                    sendFrame(frameNumber);
+                    previousFrameNumber = frameNumber;
                 }
-                );
-            };
+            });
 
-            // reduce amount of audio to analyse
-            // let audioData = shortenAudio(prepocessedAudio.resample_16khz, KEEP_PERCENTAGE, true); // <-- TRIMMED start/end
-
-            // send for feature extraction
-            
-
-            // featureExtractionWorker.postMessage({
-            //     audio: audioData.buffer
-            // }, [audioData.buffer]);
-            // audioData = null;
         });
     }).catch((error) => {
         console.error("Error resuming audio context:", error);
     });
 }
 
+function createVisualiser() {
+    // get the output-visualiser div, give it a black background, and add 512 divs to it
+    // the divs should take up the full width of the visualiser, and be 15px tall
+    // they should be touching each other, and have a white background
+    const visualiser = document.getElementById('output-visualiser');
+    visualiser.style.backgroundColor = 'black';
+    visualiser.style.display = 'flex';
+    visualiser.style.flexDirection = 'row';
+    visualiser.style.flexWrap = 'nowrap';
+    visualiser.style.justifyContent = 'flex-start';
+    visualiser.style.alignItems = 'flex-end';
+    visualiser.style.height = '50px';
+    visualiser.style.width = '90%';
+    visualiser.style.padding = '20px';
+    for (let i = 0; i < 512; i++) {
+        const bar = document.createElement('div');
+        bar.style.backgroundColor = 'white';
+        bar.style.height = '10px';
+        // set flex basis to 0 so that the flex-grow property can be used to set the width
+        bar.style.flexBasis = '0';
+        bar.style.flexGrow = '1';
+        bar.style.flexShrink = '0';
+        visualiser.appendChild(bar);
+    }
+}
+
+function updateVisualiser(frame) {
+    const visualiser = document.getElementById('output-visualiser');
+    const bars = visualiser.children;
+    for (let i = 0; i < bars.length; i++) {
+        bars[i].style.height = `${frame[i]/255*10}px`;
+        bars[i].style.backgroundColor = `rgb(${frame[i]}, ${frame[i]}, ${frame[i]})`;
+    }
+}
+
+function updateWs(frame) {
+    if (socket === null ||  
+        socket.readyState !== 1) {
+        return;
+    }
+    // turn the frame into a string of comma-separated values
+    const frameString = frame.join(',');
+    // send the frame to the websocket server
+    socket.send(frameString);
+}
+
+function sendFrame(frameNumber) {
+    if (frameNumber >= lightingOutput.length) {
+        return;
+    }
+    const frame = lightingOutput[frameNumber];
+    updateVisualiser(frame);
+    updateWs(frame);
+}
+
+
+function downloadResults(data) {
+    let jsonResults = JSON.stringify(data);
+    let blob = new Blob([jsonResults], { type: 'application/json' });
+    let url = URL.createObjectURL(blob);
+
+    let link = document.createElement('a');
+    link.href = url;
+    link.download = 'results.json';
+    link.click();
+}
+
+async function processSegments(setProgress, setText, prepocessedAudio) {
+    let startSample = 0;
+    let endSample = 0;
+    let endBeat = 0;
+    let audioData;
+    let audioSegment;
+    let results = [];
+
+    for (let i = 0; i < essentiaAnalysis.peaks.length - 1; i++) {
+        endBeat = essentiaAnalysis.peaks[i];
+        endSample = Math.floor(essentiaAnalysis.beats[endBeat] * 16000);
+
+        audioSegment = prepocessedAudio.resample_16khz.slice(startSample, endSample);
+        audioData = shortenAudio(audioSegment, KEEP_PERCENTAGE, false);
+
+        // Send the data to the feature extraction worker
+        featureExtractionWorker.postMessage({
+            idx: i,
+            audio: audioData.buffer,
+        }, [audioData.buffer]);
+
+        const features = await new Promise((resolve) => {
+            featureExtractionWorker.onmessage = function handleExtraction(msg) {
+                if (msg.data.features && msg.data.idx === i) {
+                    const features = msg.data.features;
+                    console.log(`Features for segment ${i}:`, features);
+                    resolve(features);
+                }
+            };
+        });
+
+        const inferenceResults = await Promise.all(
+            modelNames.map((n) => {
+                return new Promise((resolve) => {
+                    inferenceWorkers[n].onmessage = function handleInference(msg) {
+                        console.log('Inference message:', msg);
+                        if (msg.data.predictions) {
+                            const predictions = msg.data.predictions;
+                            console.log(`${n} predictions:`, predictions);
+                            resolve({ model: n, predictions });
+                        }
+                    };
+                    inferenceWorkers[n].postMessage({
+                        idx: i,
+                        features: features
+                    });
+                });
+            })
+        );
+
+        // Update the UI with the inference results before the next iteration
+        // updateUI(inferenceResults);
+        console.log(`Inference results for segment ${i}:`, inferenceResults);
+        results.push({ i, features, inferenceResults });
+        setProgress(50 + ((i + 1) / essentiaAnalysis.peaks.length) * 50);
+
+        audioData = null;
+        startSample = endSample;
+    }
+
+    return results;
+}
+
 function createFeatureExtractionWorker() {
     featureExtractionWorker = new Worker('./src/featureExtraction.js');
-    featureExtractionWorker.onmessage = function listenToFeatureExtractionWorker(msg) {
-        // feed to models
-        if (msg.data.features) {
-            modelNames.forEach((n) => {
-                // send features off to each of the models
-                inferenceWorkers[n].postMessage({
-                    features: msg.data.features
-                });
-            });
-            msg.data.features = null;
-        }
-        // free worker resource until next audio is uploaded
-        featureExtractionWorker.terminate();
-    };
 }
 
 function createInferenceWorkers() {
@@ -192,42 +348,103 @@ function createInferenceWorkers() {
         inferenceWorkers[n].postMessage({
             name: n
         });
-        inferenceWorkers[n].onmessage = function listenToWorker(msg) {
-            // listen out for model output
-            if (msg.data.predictions) {
-                const preds = msg.data.predictions;
-                // emmit event to PredictionCollector object
-                inferenceResultPromises.push(new Promise((res) => {
-                    res({ [n]: preds });
-                }));
-                collectPredictions();
-                console.log(`${n} predictions: `, preds);
-            }
-        };
     });
-}
-
-function collectPredictions() {
-    if (inferenceResultPromises.length == modelNames.length) {
-        Promise.all(inferenceResultPromises).then((predictions) => {
-            const allPredictions = {};
-            Object.assign(allPredictions, ...predictions);
-            resultsViz.updateMeters(allPredictions);
-            resultsViz.updateValueBoxes(essentiaAnalysis);
-            showLoader(false);
-            controls.toggleEnabled(true);
-
-            inferenceResultPromises = []; // clear array
-        });
-    }
 }
 
 function showLoader(show) {
     const loader = document.querySelector('#loader');
-    show ? loader.style.display = 'block' : loader.style.display = 'none';
+    loader.style.display = show ? 'block' : 'none';
 }
 
 function showSegmentation(essentiaAnalysis) {
+    // draw the segmentation regions
+    let endBeat;
+    let startBeat = 0;
+    for (let i = 0; i < essentiaAnalysis.peaks.length; i++) {
+        endBeat = essentiaAnalysis.beats[essentiaAnalysis.peaks[i]];
+        // alternate shades of grey
+        wsRegions.addRegion({
+            start: startBeat,
+            end: endBeat,
+            color: `rgba(0, 0, 0, 0)`,
+            drag: false,
+            resize: false,
+        });
+        startBeat = endBeat;
+    };
+    // add the last region
+    wsRegions.addRegion({
+        start: startBeat,
+        end: essentiaAnalysis.beats[essentiaAnalysis.beats.length - 1],
+        color: `rgba(0, 0, 0, 0)`,
+        drag: false,
+        resize: false,
+    });
+    // add hover events to the segments
+    for (let i = 0; i < wsRegions.regions.length; i++) {
+        const region = wsRegions.regions[i];
+        region.element.addEventListener('mouseenter', () => {
+            region.element.style.backgroundColor = 'rgba(0, 0, 0, 0.1)';
+            showInferenceResults(i);
+        });
+        region.element.addEventListener('mouseleave', () => {
+            region.element.style.backgroundColor = 'rgba(0, 0, 0, 0)';
+        });
+    }
+}
+
+// function showInferenceResults(results) {
+//     // add hover events to the regions to the segments
+//     for (let i = 0; i < results.length; i++) {
+//         const inferenceResults = results[i].inferenceResults;
+//         const region = wsRegions.regions[i]; 
+
+//         card.style.display = 'block';
+//         region.element.addEventListener('mouseenter', () => {
+//             card.innerHTML = '';
+//             inferenceResults.forEach((r) => {
+//                 const model = r.model;
+//                 const predictions = r.predictions;
+//                 const modelDiv = document.createElement('div');
+//                 modelDiv.innerHTML = `<h4>${model}</h4><p>${Math.floor(predictions * 100)}%</p>`;
+//                 card.appendChild(modelDiv);
+//             });
+//         });
+// region.element.addEventListener('mouseleave', () => {
+//     card.style.display = 'none';
+// });
+//     }
+// }
+
+function showInferenceResults(segmentIdx) {
+    if (!inferenceResults) return;
+    if (segmentIdx >= inferenceResults.length) return;
+    const card = document.querySelector('#card');
+    // update the progress bars representing the model predictions
+    const cardHeader = document.querySelector('#card-header');
+
+    //     <span class="right floated">
+    //     start:end [duration s]   
+    // </span>
+    // Segment i
+    const region = wsRegions.regions[segmentIdx];
+    const start = region.start.toFixed(2);
+    const end = region.end.toFixed(2);
+    const duration = (region.end - region.start).toFixed(2);
+    cardHeader.innerHTML = `Segment ${segmentIdx}<div class="meta">${start} - ${end} [${duration} s total]</div>`;
+
+    const inferenceResultsForSegment = inferenceResults[segmentIdx].inferenceResults;
+    const modelNames = inferenceResultsForSegment.map((r) => r.model);
+    const predictions = inferenceResultsForSegment.map((r) => r.predictions);
+    for (let i = 0; i < modelNames.length; i++) {
+        const modelName = modelNames[i];
+        const prediction = predictions[i];
+        const progress = document.getElementById(`progress_${modelName}`);
+        $(progress).progress("set progress", prediction * 100);
+    }
+}
+
+function showAdvancedSegmentation(essentiaAnalysis) {
     // add beat regions to the waveform
     let changeScore;
     for (let i = 0; i < essentiaAnalysis.beats.length; i++) {
