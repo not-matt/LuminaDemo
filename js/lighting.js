@@ -5,6 +5,7 @@ const FPS = 30;
 // 0 = low, 1 = high, null = not applicable
 const animationScores = [
     [pulse, 1, null, null],
+    [strobe, 1, null, null],
 ]
 
 function pickAnimation(segmentInference) {

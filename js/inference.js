@@ -27,7 +27,7 @@ function initModel() {
 }
 
 function getModelURL() {
-    return `../models/${modelName}-musicnn-msd-2/model.json`;
+    return `./models/${modelName}-musicnn-msd-2/model.json`;
 }
 
 async function loadModel() {
