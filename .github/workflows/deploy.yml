@@ -13,11 +13,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v2
 
+      - name: Create build directory
+        run: mkdir -p build
+
+      - name: Download UglifyJS script
+        run: curl -o build/uglify.js https://github.com/mishoo/UglifyJS/raw/2.4.24/uglifyjs
+
+      - name: Set executable permissions
+        run: chmod +x build/uglify.js
+
       - name: Uglify and bundle JavaScript
-        run: |
-          curl -o build/uglify.js https://github.com/mishoo/UglifyJS/raw/2.4.24/uglifyjs
-          chmod +x build/uglify.js
-          ./build/uglify.js js/*.js -o build/obfuscated.js
+        run: ./build/uglify.js js/*.js -o build/obfuscated.js
 
       - name: Configure Git
         run: |
@@ -34,3 +40,4 @@ jobs:
           personal_token: ${{ secrets.GITHUB_TOKEN }}
           publish_branch: bundle
           publish_dir: ./
+
