@@ -41,7 +41,11 @@ export function createLighting(analysis, inference) {
         endBeat = analysis.peaks[i]; // todo -  fix peaks to include the first and last beat 
         segmentBeats = beats.slice(startBeat, endBeat + 1);
         // subtract the start beat from the segment beats to make the first beat 0
-        segmentBeats = segmentBeats.map((beat) => beat - segmentBeats[0]);
+        if (startBeat === 0) {
+            segmentBeats.unshift(0);
+        } else {
+            segmentBeats = segmentBeats.map((beat) => beat - segmentBeats[0]);
+        }
         segmentInference = inference[i].inferenceResults;
         const animation = pickAnimation(segmentInference);
         const segmentAnimation = animation(segmentBeats, segmentInference);
@@ -195,7 +199,7 @@ function burst(segmentBeats, segmentInference) {
         }
         // mirror the last output onto left and right of the output universe 
         const centre = UNIVERSE_SIZE / 2;
-        for (let j = 0; j < UNIVERSE_SIZE ; j++) {
+        for (let j = 0; j < UNIVERSE_SIZE; j++) {
             output[i][centre - j - 1] = lastOutput[j];
             output[i][centre + j] = lastOutput[j];
         }
