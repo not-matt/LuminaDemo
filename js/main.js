@@ -1,7 +1,8 @@
 import { AnalysisResults, toggleUploadDisplayHTML, PlaybackControls } from './viz.js';
 import { preprocess, shortenAudio } from './audioUtils.js';
 
-import WaveSurfer from 'https://unpkg.com/wavesurfer.js@beta';
+// import WaveSurfer from 'https://unpkg.com/wavesurfer.js@beta';
+import WaveSurfer from 'https://unpkg.com/wavesurfer.js@7/dist/wavesurfer.esm.js'
 import RegionsPlugin from 'https://unpkg.com/wavesurfer.js@beta/dist/plugins/regions.js';
 import { segment } from './segmentation.js';
 import { createLighting } from './lighting.js';
